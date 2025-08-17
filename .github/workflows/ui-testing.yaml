@@ -54,6 +54,6 @@ jobs:
           BROWSER: ${{ matrix.browser }}
           SCREEN_WIDTH: ${{ matrix.resolution.width }}
           SCREEN_HEIGHT: ${{ matrix.resolution.height }}
-          APP_URL: ${{ secrets.APP_URL }}  
+          APP_URL: ${{ secrets.OLLAMA_URL }}  
         run: |
           pytest tests/ -v --tb=short
