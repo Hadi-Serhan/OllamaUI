@@ -31,7 +31,7 @@ export async function POST(req: Request) {
       formData.append('file', blob, 'image.jpg');
       
       // Call the object detection API
-      const predictionResponse = await fetch('http://localhost:8081/predict', {
+      const predictionResponse = await fetch(`http://${process.env.YOLO_SERVICE}/predict`, {
         method: 'POST',
         body: formData,
       });
