@@ -1,6 +1,3 @@
-import { createOllama } from 'ollama-ai-provider';
-import { streamText, convertToCoreMessages, CoreMessage, UserContent } from 'ai';
-
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
