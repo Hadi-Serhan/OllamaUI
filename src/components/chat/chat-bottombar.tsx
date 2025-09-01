@@ -157,8 +157,7 @@ export default function ChatBottombar({
                     type="submit"
                     disabled={
                       isLoading ||
-                      !input.trim() ||
-                      isListening
+                      !input.trim()
                     }
                   >
                     <SendHorizonal className="w-5 h-5" />
