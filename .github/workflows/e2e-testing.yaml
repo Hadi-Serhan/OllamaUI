@@ -63,7 +63,7 @@ jobs:
           script: |
             set -euo pipefail
 
-            # Ensure Docker & compose plugin exist and are running
+            # Ensure Docker & compose plugin exist and Docker is running
             if ! docker compose version >/dev/null 2>&1; then
               sudo apt-get update -y
               sudo apt-get install -y docker.io docker-compose-plugin
@@ -75,36 +75,41 @@ jobs:
             # Login to Docker Hub on the instance
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-            # Image coordinates
-            UI_IMAGE="${{ secrets.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
-            YOLO_IMAGE="${{ secrets.DOCKERHUB_NAMESPACE }}/yolo:${{ env.YOLO_TAG }}"
-
-            # Export BOTH styles some compose files use
+            # --- Export vars EXACTLY as used by your docker-compose.yaml ---
+            # Compose uses: ${DOCKERHUB_USERNAME}/yolo:${YOLO_IMG_TAG:-latest}
             export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_NAMESPACE }}"
-            export DOCKERHUB_NAMESPACE="${{ secrets.DOCKERHUB_NAMESPACE }}"
 
-            # UI tag variables (your compose uses OLLAMA_UI_IMG; we also set *_TAG just in case)
-            export OLLAMA_UI_IMG="${{ env.IMAGE_TAG }}"
+            # Compose uses: image: ${DOCKERHUB_USERNAME}/ollama:${OLLAMA_UI_IMG_TAG}
             export OLLAMA_UI_IMG_TAG="${{ env.IMAGE_TAG }}"
 
-            # YOLO variables (your compose uses YOLO_IMAGE; setting *_TAG too is harmless)
-            export YOLO_IMAGE="$YOLO_IMAGE"
-            export YOLO_IMAGE_TAG="${{ env.YOLO_TAG }}"
+            # Compose uses: ${YOLO_IMG_TAG:-latest}
+            export YOLO_IMG_TAG="${{ env.YOLO_TAG }}"
 
-            # DB + ports + optional URL
-            export POSTGRES_DB="predictions"
+            # DB + ports + optional URL (your api service uses POSTGRES_* in DATABASE_URL)
+            export POSTGRES_DB="${{ secrets.POSTGRES_DB }}"
+            if [ -z "${POSTGRES_DB:-}" ]; then export POSTGRES_DB="predictions"; fi
+
             export POSTGRES_USER="postgres"
+
             export POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+            if [ -z "${POSTGRES_PASSWORD:-}" ]; then export POSTGRES_PASSWORD="postgres"; fi
+
             export YOLO_PORT="8080"
             export OLLAMA_UI_PORT="3000"
+
+            # Your compose sets: OLLAMA_URL: ${OLLAMA_URL}
             export OLLAMA_URL="${{ secrets.OLLAMA_URL }}"
+            if [ -z "${OLLAMA_URL:-}" ]; then export OLLAMA_URL="http://localhost:11434"; fi
 
-            # Deploy (force compose to ignore any local /home/ubuntu/.env)
-            sudo docker compose --env-file /dev/null down || true
-            sudo docker compose --env-file /dev/null pull || true
-            sudo docker compose --env-file /dev/null up -d --remove-orphans
+            # !!! IMPORTANT: sudo normally drops env vars; preserve them for docker compose
+            SUDO_ENV="--preserve-env=DOCKERHUB_USERNAME,OLLAMA_UI_IMG_TAG,YOLO_IMG_TAG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,YOLO_PORT,OLLAMA_UI_PORT,OLLAMA_URL"
 
-            # Wait for UI
+            # Deploy (and ignore any /home/ubuntu/.env)
+            sudo $SUDO_ENV docker compose --env-file /dev/null down || true
+            sudo $SUDO_ENV docker compose --env-file /dev/null pull || true
+            sudo $SUDO_ENV docker compose --env-file /dev/null up -d --remove-orphans
+
+            # Wait for UI to come up
             for i in {1..30}; do
               if curl -fsS "http://localhost:${OLLAMA_UI_PORT}" >/dev/null; then
                 echo "UI is up"; break
@@ -113,8 +118,9 @@ jobs:
               sleep 5
             done
 
-            # Helpful to see the fully-resolved config
-            sudo docker compose --env-file /dev/null config
+            # Show resolved config (helps debugging env substitution)
+            sudo $SUDO_ENV docker compose --env-file /dev/null config
+
 
       - name: Checkout tests (OllamaUITesting)
         uses: actions/checkout@v4
