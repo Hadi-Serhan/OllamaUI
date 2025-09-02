@@ -1,6 +1,3 @@
-export const runtime = "edge";
-export const dynamic = "force-dynamic";
-
 export async function POST(req: Request) {
   // Destructure request data
   const { messages, selectedModel, data } = await req.json();
