@@ -13,7 +13,6 @@ jobs:
 
     env:
       IMAGE_NAME: ollama
-      # Browsers/resolutions you want to test (space-separated lists)
       BROWSERS: "chrome firefox"
       RESOLUTIONS: "1920x1080 1366x768"
 
@@ -21,18 +20,15 @@ jobs:
       - name: Checkout OllamaUI
         uses: actions/checkout@v4
 
-      # Login to Docker Hub with an access token
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Unique tag for the UI image
       - name: Compute image tag
         run: echo "IMAGE_TAG=${GITHUB_SHA}-${GITHUB_RUN_ID}" >> $GITHUB_ENV
 
-      # Optional: compute YOLO tag (fallback to 'latest' if secret is empty)
       - name: Compute YOLO tag
         run: |
           if [ -n "${{ secrets.YOLO_IMAGE_TAG }}" ]; then
@@ -41,7 +37,6 @@ jobs:
             echo "YOLO_TAG=latest" >> $GITHUB_ENV
           fi
 
-      # Build & push the UI image
       - name: Build & push OllamaUI image
         uses: docker/build-push-action@v6
         with:
@@ -50,7 +45,6 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
-      # Copy Docker Compose file to EC2
       - name: Copy docker-compose.yaml to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -60,7 +54,6 @@ jobs:
           source: "docker-compose.yaml"
           target: "/home/ubuntu/"
 
-      # Deploy on EC2 (no .env file—exports only; force Compose to ignore any local .env)
       - name: Deploy stack on EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -68,37 +61,50 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            set -e
+            set -euo pipefail
 
-            # Ensure docker compose plugin exists
+            # Ensure Docker & compose plugin exist and are running
             if ! docker compose version >/dev/null 2>&1; then
               sudo apt-get update -y
-              sudo apt-get install -y docker-compose-plugin
+              sudo apt-get install -y docker.io docker-compose-plugin
+              sudo systemctl enable --now docker
             fi
 
             cd /home/ubuntu
 
             # Login to Docker Hub on the instance
-            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-            # --- Export env vars for Compose substitution (NO .env file) ---
+            # Image coordinates
+            UI_IMAGE="${{ secrets.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+            YOLO_IMAGE="${{ secrets.DOCKERHUB_NAMESPACE }}/yolo:${{ env.YOLO_TAG }}"
+
+            # Export BOTH styles some compose files use
             export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_NAMESPACE }}"
+            export DOCKERHUB_NAMESPACE="${{ secrets.DOCKERHUB_NAMESPACE }}"
+
+            # UI tag variables (your compose uses OLLAMA_UI_IMG; we also set *_TAG just in case)
             export OLLAMA_UI_IMG="${{ env.IMAGE_TAG }}"
-            export YOLO_IMAGE="${{ secrets.DOCKERHUB_NAMESPACE }}/yolo:${{ env.YOLO_TAG }}"
+            export OLLAMA_UI_IMG_TAG="${{ env.IMAGE_TAG }}"
+
+            # YOLO variables (your compose uses YOLO_IMAGE; setting *_TAG too is harmless)
+            export YOLO_IMAGE="$YOLO_IMAGE"
+            export YOLO_IMAGE_TAG="${{ env.YOLO_TAG }}"
+
+            # DB + ports + optional URL
             export POSTGRES_DB="predictions"
             export POSTGRES_USER="postgres"
             export POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
             export YOLO_PORT="8080"
             export OLLAMA_UI_PORT="3000"
-            # Optional: if your app reads this
             export OLLAMA_URL="${{ secrets.OLLAMA_URL }}"
 
-            # Bring up / refresh the stack (force Compose to ignore any /home/ubuntu/.env)
-            docker compose --env-file /dev/null down || true
-            docker compose --env-file /dev/null pull || true
-            docker compose --env-file /dev/null up -d --remove-orphans
+            # Deploy (force compose to ignore any local /home/ubuntu/.env)
+            sudo docker compose --env-file /dev/null down || true
+            sudo docker compose --env-file /dev/null pull || true
+            sudo docker compose --env-file /dev/null up -d --remove-orphans
 
-            # Wait for UI to respond
+            # Wait for UI
             for i in {1..30}; do
               if curl -fsS "http://localhost:${OLLAMA_UI_PORT}" >/dev/null; then
                 echo "UI is up"; break
@@ -107,7 +113,8 @@ jobs:
               sleep 5
             done
 
-      # ---------- Selenium E2E tests against the EC2 public URL ----------
+            # Helpful to see the fully-resolved config
+            sudo docker compose --env-file /dev/null config
 
       - name: Checkout tests (OllamaUITesting)
         uses: actions/checkout@v4
@@ -127,13 +134,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Install browsers for the runner
       - name: Set up Chrome
         uses: browser-actions/setup-chrome@v1
+
       - name: Set up Firefox
         uses: browser-actions/setup-firefox@v1
 
-      # Allure environment metadata
       - name: Create Allure environment metadata
         working-directory: tests
         run: |
@@ -153,7 +159,7 @@ jobs:
           set -e
           for B in $BROWSERS; do
             for R in $RESOLUTIONS; do
-              OUT="allure-results/${B}-${R//\//x}"
+              OUT="allure-results/${B}-${R//\//x}"`
               mkdir -p "$OUT"
               echo "=== Running tests: browser=$B res=$R ==="
               pytest -q \
