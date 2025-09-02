@@ -13,6 +13,7 @@ jobs:
 
     env:
       IMAGE_NAME: ollama
+      # Browsers/resolutions you want to test (space-separated lists)
       BROWSERS: "chrome firefox"
       RESOLUTIONS: "1920x1080 1366x768"
 
@@ -31,6 +32,15 @@ jobs:
       - name: Compute image tag
         run: echo "IMAGE_TAG=${GITHUB_SHA}-${GITHUB_RUN_ID}" >> $GITHUB_ENV
 
+      # Optional: compute YOLO tag (fallback to 'latest' if secret is empty)
+      - name: Compute YOLO tag
+        run: |
+          if [ -n "${{ secrets.YOLO_IMAGE_TAG }}" ]; then
+            echo "YOLO_TAG=${{ secrets.YOLO_IMAGE_TAG }}" >> $GITHUB_ENV
+          else
+            echo "YOLO_TAG=latest" >> $GITHUB_ENV
+          fi
+
       # Build & push the UI image
       - name: Build & push OllamaUI image
         uses: docker/build-push-action@v6
@@ -41,7 +51,6 @@ jobs:
             ${{ secrets.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
       # Copy Docker Compose file to EC2
-      # (make sure your repo file name matches; change to docker-compose.yaml if that's your file)
       - name: Copy docker-compose.yaml to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -51,7 +60,7 @@ jobs:
           source: "docker-compose.yaml"
           target: "/home/ubuntu/"
 
-      # Deploy on EC2 (no .env file — exports only)
+      # Deploy on EC2 (no .env file—exports only; force Compose to ignore any local .env)
       - name: Deploy stack on EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -72,26 +81,22 @@ jobs:
             # Login to Docker Hub on the instance
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-            # Decide YOLO tag (fixed via secret or fallback to latest)
-            YOLO_TAG="${{ secrets.YOLO_IMAGE_TAG }}"
-            if [ -z "$YOLO_TAG" ]; then YOLO_TAG="latest"; fi
-
-            # --- Export env vars for Compose substitution (no .env file) ---
+            # --- Export env vars for Compose substitution (NO .env file) ---
             export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_NAMESPACE }}"
             export OLLAMA_UI_IMG="${{ env.IMAGE_TAG }}"
-            export YOLO_IMAGE="${{ secrets.DOCKERHUB_NAMESPACE }}/yolo:${YOLO_TAG}"
+            export YOLO_IMAGE="${{ secrets.DOCKERHUB_NAMESPACE }}/yolo:${{ env.YOLO_TAG }}"
             export POSTGRES_DB="predictions"
             export POSTGRES_USER="postgres"
             export POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
             export YOLO_PORT="8080"
             export OLLAMA_UI_PORT="3000"
-            # Optional: if your compose references OLLAMA_URL
+            # Optional: if your app reads this
             export OLLAMA_URL="${{ secrets.OLLAMA_URL }}"
-            
-            # Bring up / refresh the stack
-            docker compose down || true
-            docker compose pull || true
-            docker compose up -d
+
+            # Bring up / refresh the stack (force Compose to ignore any /home/ubuntu/.env)
+            docker compose --env-file /dev/null down || true
+            docker compose --env-file /dev/null pull || true
+            docker compose --env-file /dev/null up -d --remove-orphans
 
             # Wait for UI to respond
             for i in {1..30}; do
@@ -109,6 +114,7 @@ jobs:
         with:
           repository: YOUR_GITHUB_ORG_OR_USER/OllamaUITesting
           path: tests
+          token: ${{ secrets.UI_TESTING_GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -134,7 +140,7 @@ jobs:
           mkdir -p allure-results
           cat > allure-results/environment.properties <<EOF
           OLLAMA_UI_IMAGE=${{ secrets.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-          YOLO_IMAGE=${{ secrets.DOCKERHUB_NAMESPACE }}/yolo:${{ secrets.YOLO_IMAGE_TAG || 'latest' }}
+          YOLO_IMAGE=${{ secrets.DOCKERHUB_NAMESPACE }}/yolo:${{ env.YOLO_TAG }}
           POSTGRES_IMAGE=postgres:15
           BASE_URL=http://${{ secrets.EC2_HOST }}:3000
           EOF
