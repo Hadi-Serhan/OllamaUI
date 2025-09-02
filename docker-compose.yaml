@@ -34,7 +34,7 @@ services:
     ports:
       - "${OLLAMA_UI_PORT:-3000}:3000"
     environment:
-      YOLO_SERVICE: api:8080
+      YOLO_SERVICE: http://api:8080
       OLLAMA_URL: ${OLLAMA_URL}
     depends_on:
       - api
