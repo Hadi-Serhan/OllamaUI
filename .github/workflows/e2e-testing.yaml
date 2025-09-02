@@ -1,8 +1,11 @@
 name: E2E Deploy & Test (EC2)
 
 on:
+  push:
+    branches: [ master ]
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
+  workflow_dispatch: {}
 
 jobs:
   e2e:
