@@ -1,6 +1,6 @@
 services:
   api:
-    image: ${YOLO_IMAGE}
+    image: ${DOCKERHUB_USERNAME}/yolo:${YOLO_IMG_TAG:-latest}
     pull_policy: always
     ports:
       - "${YOLO_PORT:-8080}:8080"
@@ -29,12 +29,12 @@ services:
     restart: unless-stopped
 
   ollama-ui:
-    image: ${OLLAMA_UI_IMAGE}
+    image: ${DOCKERHUB_USERNAME}/ollama:${OLLAMA_UI_IMG_TAG}
     pull_policy: always
     ports:
       - "${OLLAMA_UI_PORT:-3000}:3000"
     environment:
-      YOLO_SERVICE: http://api:8080
+      YOLO_SERVICE: api:8080
       OLLAMA_URL: ${OLLAMA_URL}
     depends_on:
       - api

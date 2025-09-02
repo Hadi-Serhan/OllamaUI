@@ -41,14 +41,14 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
-      # Copy docker-compose.yml to EC2 (from this repo)
-      - name: Copy docker-compose.yml to EC2
+      # Copy docker-compose.yaml to EC2 (from this repo)
+      - name: Copy docker-compose.yaml to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "docker-compose.yml"
+          source: "docker-compose.yaml"
           target: "/home/ubuntu/"
 
       # Deploy on EC2
@@ -88,7 +88,7 @@ jobs:
             EOF
 
             # Bring up / refresh the stack
-            docker compose down
+            docker compose down || true
             docker compose pull || true
             docker compose up -d
 
