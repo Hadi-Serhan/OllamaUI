@@ -60,7 +60,6 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
-          command_timeout: 45m   # <— longer so big pulls don’t kill the job
           script: |
             set -euo pipefail
 
@@ -71,54 +70,46 @@ jobs:
               sudo systemctl enable --now docker
             fi
 
-            cd /home/ubuntu
+            # Work in a clean folder that has no .env
+            mkdir -p /home/ubuntu/deploy
+            cp -f /home/ubuntu/docker-compose.yaml /home/ubuntu/deploy/docker-compose.yaml
+            cd /home/ubuntu/deploy
 
             # Login to Docker Hub on the instance
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-            # === Env vars EXACTLY as your docker-compose.yaml expects ===
+            # Export exactly what your compose file expects
             export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_NAMESPACE }}"
             export OLLAMA_UI_IMG_TAG="${{ env.IMAGE_TAG }}"
             export YOLO_IMG_TAG="${{ env.YOLO_TAG }}"
-
-            # DB + ports + optional URL
-            export POSTGRES_DB="${{ secrets.POSTGRES_DB || 'predictions' }}"
+            export POSTGRES_DB="predictions"
             export POSTGRES_USER="postgres"
-            export POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD || 'postgres' }}"
+            export POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
             export YOLO_PORT="8080"
             export OLLAMA_UI_PORT="3000"
+            export OLLAMA_URL="${{ secrets.OLLAMA_URL }}"
 
-            # If Ollama runs on the host, containers should use host.docker.internal
-            export OLLAMA_URL="${{ secrets.OLLAMA_URL || 'http://host.docker.internal:11434' }}"
-
-            # sudo drops env by default; preserve what compose needs
+            # sudo normally drops env; preserve the vars for docker compose
             SUDO_ENV="--preserve-env=DOCKERHUB_USERNAME,OLLAMA_UI_IMG_TAG,YOLO_IMG_TAG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,YOLO_PORT,OLLAMA_UI_PORT,OLLAMA_URL"
 
-            # Pull and start (ignore any /home/ubuntu/.env)
-            sudo $SUDO_ENV docker compose --env-file /dev/null pull
+            # Bring up / refresh the stack; explicitly ignore any .env (even if present elsewhere)
+            sudo $SUDO_ENV docker compose --env-file /dev/null down || true
+            sudo $SUDO_ENV docker compose --env-file /dev/null pull || true
             sudo $SUDO_ENV docker compose --env-file /dev/null up -d --remove-orphans
 
-            # Quick health check + useful diagnostics in the logs
+            # Wait for UI
             for i in {1..30}; do
               if curl -fsS "http://localhost:${OLLAMA_UI_PORT}" >/dev/null; then
-                echo "UI is up"
-                break
+                echo "UI is up"; break
               fi
-              echo "Waiting for UI... ($i)"
-              sleep 5
+              echo "Waiting for UI... ($i)"; sleep 5
             done
 
+            # Non-fatal diagnostics (also ignore .env here)
             echo "--- docker compose ps ---"
-            sudo $SUDO_ENV docker compose ps
-
-            echo "--- last 100 lines of each service ---"
-            sudo $SUDO_ENV docker compose logs --tail=100 db || true
-            sudo $SUDO_ENV docker compose logs --tail=100 api || true
-            sudo $SUDO_ENV docker compose logs --tail=100 ollama-ui || true
-
-            echo "--- resolved compose config (for env substitution sanity) ---"
-            sudo $SUDO_ENV docker compose --env-file /dev/null config
-
+            sudo $SUDO_ENV docker compose --env-file /dev/null ps || true
+            echo "--- last 100 lines of logs ---"
+            sudo $SUDO_ENV docker compose --env-file /dev/null logs --no-color --tail=100 ollama-ui api db || true
 
       - name: Checkout tests (OllamaUITesting)
         uses: actions/checkout@v4
