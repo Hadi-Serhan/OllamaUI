@@ -2,7 +2,7 @@ name: Advanced Selenium UI Tests
 
 on:
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       headless:
@@ -68,6 +68,7 @@ jobs:
           BROWSER: ${{ matrix.browser }}
           SCREEN_WIDTH: ${{ matrix.resolution.width }}
           SCREEN_HEIGHT: ${{ matrix.resolution.height }}
+          # Point tests to your deployed UI (set this in repo secrets)
           OLLAMA_URL: ${{ secrets.OLLAMA_URL }}
         run: |
           mkdir -p allure-results

@@ -1,6 +1,3 @@
-import { createOllama } from 'ollama-ai-provider';
-import { streamText, convertToCoreMessages, CoreMessage, UserContent } from 'ai';
-
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
@@ -97,4 +94,3 @@ Please make sure the object detection service is running on localhost:8080.`;
       'X-Vercel-AI-Data-Stream': 'v1',
     },
   });
-}
