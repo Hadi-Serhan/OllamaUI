@@ -137,7 +137,7 @@ jobs:
       - name: Checkout tests (OllamaUITesting)
         uses: actions/checkout@v4
         with:
-          repository: YOUR_GITHUB_ORG_OR_USER/OllamaUITesting
+          repository: Hadi-Serhan/OllamaUITesting
           path: tests
           token: ${{ secrets.UI_TESTING_GITHUB_TOKEN }}
 
