@@ -169,26 +169,50 @@ jobs:
           BASE_URL=http://${{ secrets.EC2_HOST }}:3000
           EOF
 
-      - name: Run Selenium tests (matrix via loops)
+      - name: Set up Chrome
+        id: chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Set up Firefox
+        id: firefox
+        uses: browser-actions/setup-firefox@v1
+
+      # Allure environment metadata
+      - name: Create Allure environment metadata
+        working-directory: tests
+        run: |
+          mkdir -p allure-results
+          cat > allure-results/environment.properties <<EOF
+          OLLAMA_UI_IMAGE=${{ secrets.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          YOLO_IMAGE=${{ secrets.DOCKERHUB_NAMESPACE }}/yolo:${{ env.YOLO_TAG }}
+          POSTGRES_IMAGE=postgres:15
+          OLLAMA_URL=http://${{ secrets.EC2_HOST }}:3000
+          EOF
+
+      - name: Run Selenium tests (matrix via env)
         working-directory: tests
         env:
           BASE_URL: http://${{ secrets.EC2_HOST }}:3000
-        shell: bash
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          FIREFOX_BIN: ${{ steps.firefox.outputs.firefox-path }}
         run: |
           set -e
           for B in $BROWSERS; do
             for R in $RESOLUTIONS; do
+              W="${R%x*}"
+              H="${R#*x}"
               OUT="allure-results/${B}-${R//\//x}"
               mkdir -p "$OUT"
-              echo "=== Running tests: browser=$B res=$R ==="
-              pytest -q \
-                --browser "$B" \
-                --window-size "$R" \
-                --base-url "$BASE_URL" \
-                --alluredir="$OUT"
+              echo "=== Running tests: browser=$B size=${W}x${H} ==="
+              # Your tests pick these up from tests/config.py
+              BROWSER="$B" \
+              SCREEN_WIDTH="$W" \
+              SCREEN_HEIGHT="$H" \
+              HEADLESS="true" \
+              OLLAMA_URL="$BASE_URL" \
+              pytest -q --alluredir="$OUT"
             done
           done
-
 
       - name: Upload Allure results
         uses: actions/upload-artifact@v4
