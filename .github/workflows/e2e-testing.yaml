@@ -88,10 +88,10 @@ jobs:
             PROJECT="ollamauistack"
             SUDO_ENV="--preserve-env=DOCKERHUB_USERNAME,OLLAMA_UI_IMG_TAG,YOLO_IMG_TAG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,YOLO_PORT,OLLAMA_UI_PORT,OLLAMA_URL"
 
-            echo "== Pre-clean other old compose projects =="
+            echo "== Pre-clean old compose projects =="
             sudo docker compose -p ubuntu down || true
             sudo docker compose -p deploy down || true
-            sudo docker compose -p $PROJECT down || true
+            sudo docker compose -p "$PROJECT" down || true
 
             echo "== Free host ports 3000 and 8080 if anything is using them =="
             for PORT in 3000 8080; do
@@ -109,8 +109,8 @@ jobs:
             done
 
             echo "== Deploy new stack =="
-            sudo $SUDO_ENV docker compose -p $PROJECT --env-file /dev/null pull || true
-            sudo $SUDO_ENV docker compose -p $PROJECT --env-file /dev/null up -d --remove-orphans
+            sudo $SUDO_ENV docker compose -p "$PROJECT" --env-file /dev/null pull || true
+            sudo $SUDO_ENV docker compose -p "$PROJECT" --env-file /dev/null up -d --remove-orphans
 
             echo "== Wait for UI =="
             for i in {1..30}; do
@@ -121,9 +121,9 @@ jobs:
             done
 
             echo "--- docker compose ps ---"
-            sudo $SUDO_ENV docker compose -p $PROJECT --env-file /dev/null ps || true
+            sudo $SUDO_ENV docker compose -p "$PROJECT" --env-file /dev/null ps || true
             echo "--- last 80 lines of logs ---"
-            sudo $SUDO_ENV docker compose -p $PROJECT --env-file /dev/null logs --no-color --tail=80 ollama-ui api db || true
+            sudo $SUDO_ENV docker compose -p "$PROJECT" --env-file /dev/null logs --no-color --tail=80 ollama-ui api db || true
 
       - name: Checkout tests (OllamaUITesting)
         uses: actions/checkout@v4
@@ -143,50 +143,52 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Pin Chrome to stable and Firefox to latest; capture their binary paths.
-      - name: Setup Chrome stable
+      - name: Setup Chrome (stable)
         id: chrome
         uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: stable
 
-      - name: Setup Firefox
+      - name: Setup Firefox (latest)
         id: firefox
         uses: browser-actions/setup-firefox@v1
         with:
           firefox-version: latest
 
-      # Ensure an old system chromedriver doesn't hijack Selenium Manager.
-      - name: Remove preinstalled chromedriver (avoid version mismatch)
+      - name: Remove preinstalled chromedriver (avoid mismatch)
         run: |
           sudo rm -f /usr/bin/chromedriver || true
           which chromedriver || true
 
-      - name: Create Allure environment metadata
-        working-directory: tests
-        run: |
-          mkdir -p allure-results
-          cat > allure-results/environment.properties <<EOF
-          OLLAMA_UI_IMAGE=${{ secrets.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-          YOLO_IMAGE=${{ secrets.DOCKERHUB_NAMESPACE }}/yolo:${{ env.YOLO_TAG }}
-          POSTGRES_IMAGE=postgres:15
-          OLLAMA_URL=http://${{ secrets.EC2_HOST }}:3000
-          EOF
-
-      - name: Run Selenium tests (matrix via env)
+      - name: Run Selenium tests (per browser/resolution) and write Allure env
         working-directory: tests
         env:
           BASE_URL: http://${{ secrets.EC2_HOST }}:3000
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
           FIREFOX_BIN: ${{ steps.firefox.outputs.firefox-path }}
+          OLLAMA_UI_IMAGE: ${{ secrets.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          YOLO_IMAGE: ${{ secrets.DOCKERHUB_NAMESPACE }}/yolo:${{ env.YOLO_TAG }}
+          POSTGRES_IMAGE: postgres:15
         run: |
           set -e
+          mkdir -p allure-results
           for B in $BROWSERS; do
             for R in $RESOLUTIONS; do
               W="${R%x*}"
               H="${R#*x}"
               OUT="allure-results/${B}-${R//\//x}"
               mkdir -p "$OUT"
+
+              # Write environment.properties for this run (no heredoc to avoid YAML indentation issues)
+              printf '%s\n' \
+                "BROWSER=${B}" \
+                "RESOLUTION=${W}x${H}" \
+                "BASE_URL=${BASE_URL}" \
+                "OLLAMA_UI_IMAGE=${OLLAMA_UI_IMAGE}" \
+                "YOLO_IMAGE=${YOLO_IMAGE}" \
+                "POSTGRES_IMAGE=${POSTGRES_IMAGE}" \
+                > "$OUT/environment.properties"
+
               echo "=== Running tests: browser=$B size=${W}x${H} ==="
               BROWSER="$B" \
               SCREEN_WIDTH="$W" \
@@ -197,8 +199,17 @@ jobs:
             done
           done
 
+          # Merge all results to a single folder for publishing
+          rm -rf allure-results-merged
+          mkdir -p allure-results-merged
+          find allure-results -type f -name '*.json' -exec cp {} allure-results-merged/ \;
+          find allure-results -type f -name '*.txt'  -exec cp {} allure-results-merged/ \;
+          find allure-results -type f -name '*.xml'  -exec cp {} allure-results-merged/ \;
+          find allure-results -type f -name '*.png'  -exec cp {} allure-results-merged/ \;
+          find allure-results -type f -name 'environment.properties' -exec cp {} allure-results-merged/ \;
+
       - name: Upload Allure results
         uses: actions/upload-artifact@v4
         with:
           name: allure-results
-          path: tests/allure-results
+          path: tests/allure-results-merged
