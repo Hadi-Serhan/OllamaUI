@@ -63,22 +63,18 @@ jobs:
           script: |
             set -euo pipefail
 
-            # Ensure Docker & compose plugin exist and Docker is running
             if ! docker compose version >/dev/null 2>&1; then
               sudo apt-get update -y
               sudo apt-get install -y docker.io docker-compose-plugin
               sudo systemctl enable --now docker
             fi
 
-            # Work in a clean folder (no .env)
             mkdir -p /home/ubuntu/deploy
             cp -f /home/ubuntu/docker-compose.yaml /home/ubuntu/deploy/docker-compose.yaml
             cd /home/ubuntu/deploy
 
-            # Login to Docker Hub on the instance
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-            # Export exactly what your compose file expects
             export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_NAMESPACE }}"
             export OLLAMA_UI_IMG_TAG="${{ env.IMAGE_TAG }}"
             export YOLO_IMG_TAG="${{ env.YOLO_TAG }}"
@@ -89,7 +85,6 @@ jobs:
             export OLLAMA_UI_PORT="3000"
             export OLLAMA_URL="${{ secrets.OLLAMA_URL }}"
 
-            # Use a consistent project name so we always replace the same stack
             PROJECT="ollamauistack"
             SUDO_ENV="--preserve-env=DOCKERHUB_USERNAME,OLLAMA_UI_IMG_TAG,YOLO_IMG_TAG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,YOLO_PORT,OLLAMA_UI_PORT,OLLAMA_URL"
 
@@ -99,7 +94,6 @@ jobs:
             sudo docker compose -p $PROJECT down || true
 
             echo "== Free host ports 3000 and 8080 if anything is using them =="
-            # Stop any Docker containers publishing these ports
             for PORT in 3000 8080; do
               IDS=$(sudo docker ps --format '{{.ID}} {{.Ports}}' | awk -v p=":$PORT->" '$0 ~ p {print $1}')
               if [ -n "${IDS}" ]; then
@@ -107,11 +101,9 @@ jobs:
                 sudo docker stop ${IDS} || true
               fi
             done
-            # If a non-docker process has the port, kill it (last resort)
             for PORT in 3000 8080; do
               if sudo ss -ltnp "( sport = :${PORT} )" | grep -q LISTEN; then
                 echo "Port ${PORT} is still taken by a non-docker process; killing it."
-                # fuser is commonly available; if not, this will no-op
                 sudo fuser -k ${PORT}/tcp || true
               fi
             done
@@ -133,7 +125,6 @@ jobs:
             echo "--- last 80 lines of logs ---"
             sudo $SUDO_ENV docker compose -p $PROJECT --env-file /dev/null logs --no-color --tail=80 ollama-ui api db || true
 
-
       - name: Checkout tests (OllamaUITesting)
         uses: actions/checkout@v4
         with:
@@ -152,32 +143,25 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Set up Chrome
-        uses: browser-actions/setup-chrome@v1
-
-      - name: Set up Firefox
-        uses: browser-actions/setup-firefox@v1
-
-      - name: Create Allure environment metadata
-        working-directory: tests
-        run: |
-          mkdir -p allure-results
-          cat > allure-results/environment.properties <<EOF
-          OLLAMA_UI_IMAGE=${{ secrets.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-          YOLO_IMAGE=${{ secrets.DOCKERHUB_NAMESPACE }}/yolo:${{ env.YOLO_TAG }}
-          POSTGRES_IMAGE=postgres:15
-          BASE_URL=http://${{ secrets.EC2_HOST }}:3000
-          EOF
-
-      - name: Set up Chrome
+      # Pin Chrome to stable and Firefox to latest; capture their binary paths.
+      - name: Setup Chrome stable
         id: chrome
         uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
 
-      - name: Set up Firefox
+      - name: Setup Firefox
         id: firefox
         uses: browser-actions/setup-firefox@v1
+        with:
+          firefox-version: latest
 
-      # Allure environment metadata
+      # Ensure an old system chromedriver doesn't hijack Selenium Manager.
+      - name: Remove preinstalled chromedriver (avoid version mismatch)
+        run: |
+          sudo rm -f /usr/bin/chromedriver || true
+          which chromedriver || true
+
       - name: Create Allure environment metadata
         working-directory: tests
         run: |
@@ -204,7 +188,6 @@ jobs:
               OUT="allure-results/${B}-${R//\//x}"
               mkdir -p "$OUT"
               echo "=== Running tests: browser=$B size=${W}x${H} ==="
-              # Your tests pick these up from tests/config.py
               BROWSER="$B" \
               SCREEN_WIDTH="$W" \
               SCREEN_HEIGHT="$H" \
