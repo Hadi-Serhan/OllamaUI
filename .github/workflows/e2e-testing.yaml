@@ -173,11 +173,12 @@ jobs:
         working-directory: tests
         env:
           BASE_URL: http://${{ secrets.EC2_HOST }}:3000
+        shell: bash
         run: |
           set -e
           for B in $BROWSERS; do
             for R in $RESOLUTIONS; do
-              OUT="allure-results/${B}-${R//\//x}"`
+              OUT="allure-results/${B}-${R//\//x}"
               mkdir -p "$OUT"
               echo "=== Running tests: browser=$B res=$R ==="
               pytest -q \
@@ -187,6 +188,7 @@ jobs:
                 --alluredir="$OUT"
             done
           done
+
 
       - name: Upload Allure results
         uses: actions/upload-artifact@v4
