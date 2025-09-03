@@ -208,6 +208,37 @@ jobs:
           find allure-results -type f -name '*.png'  -exec cp {} allure-results-merged/ \;
           find allure-results -type f -name 'environment.properties' -exec cp {} allure-results-merged/ \;
 
+      - name: Write merged Allure environment + executor
+        working-directory: tests
+        run: |
+          # Single env file at the root that Allure will read
+          {
+            echo "BASE_URL=http://${{ secrets.EC2_HOST }}:3000"
+            echo "BROWSERS=${{ env.BROWSERS }}"
+            echo "RESOLUTIONS=${{ env.RESOLUTIONS }}"
+            echo "CHROME_VERSION=${{ steps.chrome.outputs.chrome-version }}"
+            echo "FIREFOX_VERSION=${{ steps.firefox.outputs.firefox-version }}"
+            echo "OLLAMA_UI_IMAGE=${{ secrets.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+            echo "YOLO_IMAGE=${{ secrets.DOCKERHUB_NAMESPACE }}/yolo:${{ env.YOLO_TAG }}"
+            echo "POSTGRES_IMAGE=postgres:15"
+          } > allure-results-merged/environment.properties
+
+          # Optional: executor info card in the report
+          cat > allure-results-merged/executor.json <<'JSON'
+          {
+            "name": "GitHub Actions",
+            "type": "github",
+            "url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "buildName": "${{ github.workflow }}",
+            "buildOrder": "${{ github.run_number }}",
+            "reportName": "E2E on EC2"
+          }
+          JSON
+
+          echo "== merged results =="
+          ls -l allure-results-merged/
+
+
       - name: Upload Allure results
         uses: actions/upload-artifact@v4
         with:
