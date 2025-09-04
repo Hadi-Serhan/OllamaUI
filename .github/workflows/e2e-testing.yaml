@@ -5,7 +5,12 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch, tag, or SHA of OllamaUI to build'
+        required: false
+        default: master
 
 jobs:
   e2e:
@@ -17,8 +22,31 @@ jobs:
       RESOLUTIONS: "1920x1080 1366x768"
 
     steps:
-      - name: Checkout OllamaUI
+      - name: Checkout OllamaUI (requested ref or event ref)
         uses: actions/checkout@v4
+        with:
+          # If manually triggered, use the provided ref; otherwise use the event ref
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Show HEAD and SDK versions (pre-build)
+        run: |
+          echo "== GITHUB CONTEXT =="
+          echo "event: ${{ github.event_name }}"
+          echo "ref:   ${{ github.ref }}"
+          echo "input ref: ${{ github.event.inputs.ref }}"
+          echo "sha:   ${{ github.sha }}"
+          echo
+          git log --oneline -n 1
+          echo
+          echo "== package.json versions =="
+          node -e "const p=require('./package.json'); console.log('@aws-sdk/client-s3:', p.dependencies?.['@aws-sdk/client-s3']); console.log('@aws-sdk/s3-presigned-post:', p.dependencies?.['@aws-sdk/s3-presigned-post']);"
+          echo
+          echo "== package-lock.json checks =="
+          grep -n '\"@aws-sdk/client-s3\"' package-lock.json || true
+          grep -n '\"@aws-sdk/s3-presigned-post\"' package-lock.json || true
+          echo
+          echo "== smithy entries (sanity) =="
+          grep -n '@smithy/eventstream-codec' package-lock.json || true
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -85,7 +113,7 @@ jobs:
             export YOLO_PORT="8080"
             export OLLAMA_UI_PORT="3000"
             export OLLAMA_URL="${{ secrets.OLLAMA_URL }}"
-            # NEW: S3 envs for the YOLO container
+            # S3 envs for the YOLO container
             export AWS_REGION="${{ secrets.AWS_REGION }}"
             export AWS_S3_BUCKET="${{ secrets.S3_BUCKET_NAME }}"
 
