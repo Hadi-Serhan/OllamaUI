@@ -75,6 +75,7 @@ jobs:
 
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | sudo docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
+            # Compose envs
             export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_NAMESPACE }}"
             export OLLAMA_UI_IMG_TAG="${{ env.IMAGE_TAG }}"
             export YOLO_IMG_TAG="${{ env.YOLO_TAG }}"
@@ -84,9 +85,12 @@ jobs:
             export YOLO_PORT="8080"
             export OLLAMA_UI_PORT="3000"
             export OLLAMA_URL="${{ secrets.OLLAMA_URL }}"
+            # NEW: S3 envs for the YOLO container
+            export AWS_REGION="${{ secrets.AWS_REGION }}"
+            export AWS_S3_BUCKET="${{ secrets.S3_BUCKET_NAME }}"
 
             PROJECT="ollamauistack"
-            SUDO_ENV="--preserve-env=DOCKERHUB_USERNAME,OLLAMA_UI_IMG_TAG,YOLO_IMG_TAG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,YOLO_PORT,OLLAMA_UI_PORT,OLLAMA_URL"
+            SUDO_ENV="--preserve-env=DOCKERHUB_USERNAME,OLLAMA_UI_IMG_TAG,YOLO_IMG_TAG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,YOLO_PORT,OLLAMA_UI_PORT,OLLAMA_URL,AWS_REGION,AWS_S3_BUCKET"
 
             echo "== Pre-clean old compose projects =="
             sudo docker compose -p ubuntu down || true
@@ -179,7 +183,6 @@ jobs:
               OUT="allure-results/${B}-${R//\//x}"
               mkdir -p "$OUT"
 
-              # Write environment.properties for this run (no heredoc to avoid YAML indentation issues)
               printf '%s\n' \
                 "BROWSER=${B}" \
                 "RESOLUTION=${W}x${H}" \
@@ -187,6 +190,8 @@ jobs:
                 "OLLAMA_UI_IMAGE=${OLLAMA_UI_IMAGE}" \
                 "YOLO_IMAGE=${YOLO_IMAGE}" \
                 "POSTGRES_IMAGE=${POSTGRES_IMAGE}" \
+                "AWS_REGION=${{ secrets.AWS_REGION }}" \
+                "AWS_S3_BUCKET=${{ secrets.S3_BUCKET_NAME }}" \
                 > "$OUT/environment.properties"
 
               echo "=== Running tests: browser=$B size=${W}x${H} ==="
@@ -211,7 +216,6 @@ jobs:
       - name: Write merged Allure environment + executor
         working-directory: tests
         run: |
-          # Single env file at the root that Allure will read
           {
             echo "BASE_URL=http://${{ secrets.EC2_HOST }}:3000"
             echo "BROWSERS=${{ env.BROWSERS }}"
@@ -221,9 +225,10 @@ jobs:
             echo "OLLAMA_UI_IMAGE=${{ secrets.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
             echo "YOLO_IMAGE=${{ secrets.DOCKERHUB_NAMESPACE }}/yolo:${{ env.YOLO_TAG }}"
             echo "POSTGRES_IMAGE=postgres:15"
+            echo "AWS_REGION=${{ secrets.AWS_REGION }}"
+            echo "AWS_S3_BUCKET=${{ secrets.S3_BUCKET_NAME }}"
           } > allure-results-merged/environment.properties
 
-          # Optional: executor info card in the report
           cat > allure-results-merged/executor.json <<'JSON'
           {
             "name": "GitHub Actions",
@@ -238,13 +243,11 @@ jobs:
           echo "== merged results =="
           ls -l allure-results-merged/
 
-
       - name: Upload Allure results
         uses: actions/upload-artifact@v4
         with:
           name: allure-results
           path: tests/allure-results-merged
-
 
   publish-allure:
     name: Publish Allure to Pages
@@ -259,8 +262,8 @@ jobs:
       - name: Download allure-results artifact
         uses: actions/download-artifact@v4
         with:
-          name: allure-results           # must match the name used in the e2e job
-          path: ./allure-results         # this folder contains environment.properties
+          name: allure-results
+          path: ./allure-results
 
       - name: Debug env file is here
         run: |
@@ -271,7 +274,7 @@ jobs:
       - name: Generate Allure report
         uses: simple-elf/allure-report-action@v1.8
         with:
-          allure_results: ./allure-results   # points at the folder with env file
+          allure_results: ./allure-results
           allure_report:  ./allure-report
           allure_history: ./allure-history
 
