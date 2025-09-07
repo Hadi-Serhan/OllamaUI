@@ -120,11 +120,16 @@ jobs:
             PROJECT="ollamauistack"
             SUDO_ENV="--preserve-env=DOCKERHUB_USERNAME,OLLAMA_UI_IMG_TAG,YOLO_IMG_TAG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,YOLO_PORT,OLLAMA_UI_PORT,OLLAMA_URL,AWS_REGION,AWS_S3_BUCKET"
 
-            # NEW: stop/disable/mask legacy bare-metal yolo.service so it can't grab :8080
+            # Ensure legacy bare-metal yolo.service can't bind host :8080 (non-destructive, reversible)
             if systemctl list-unit-files | grep -q '^yolo.service'; then
-              sudo systemctl stop yolo.service || true
-              sudo systemctl disable yolo.service || true
-              sudo systemctl mask yolo.service || true
+              if systemctl is-active --quiet yolo.service; then
+                sudo systemctl stop yolo.service || true
+              fi
+              state="$(systemctl is-enabled yolo.service 2>/dev/null || true)"
+              if [ "$state" != "masked" ]; then
+                sudo systemctl disable yolo.service || true
+                sudo systemctl mask yolo.service || true
+              fi
               sudo systemctl daemon-reload || true
             fi
             # Also kill any stray uvicorn bound to 8080 (best-effort)
