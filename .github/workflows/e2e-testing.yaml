@@ -121,19 +121,18 @@ jobs:
             SUDO_ENV="--preserve-env=DOCKERHUB_USERNAME,OLLAMA_UI_IMG_TAG,YOLO_IMG_TAG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,YOLO_PORT,OLLAMA_UI_PORT,OLLAMA_URL,AWS_REGION,AWS_S3_BUCKET"
 
             # Ensure legacy bare-metal yolo.service can't bind host :8080 (non-destructive, reversible)
+            set +e
             if systemctl list-unit-files | grep -q '^yolo.service'; then
-              if systemctl is-active --quiet yolo.service; then
-                sudo systemctl stop yolo.service || true
-              fi
-              # If a real unit file exists, move it aside so masking can create the /dev/null symlink
+              systemctl is-active --quiet yolo.service && sudo systemctl stop yolo.service
               if [ -e /etc/systemd/system/yolo.service ] && [ ! -L /etc/systemd/system/yolo.service ]; then
                 echo "Backing up /etc/systemd/system/yolo.service -> /etc/systemd/system/yolo.service.bak"
-                sudo mv /etc/systemd/system/yolo.service /etc/systemd/system/yolo.service.bak || true
+                sudo mv /etc/systemd/system/yolo.service /etc/systemd/system/yolo.service.bak
               fi
-              sudo systemctl disable yolo.service || true
-              sudo systemctl mask yolo.service || true
-              sudo systemctl daemon-reload || true
+              sudo systemctl disable yolo.service 2>/dev/null
+              sudo systemctl mask yolo.service 2>/dev/null
+              sudo systemctl daemon-reload
             fi
+            set -e
             # Also kill any stray uvicorn bound to 8080 (best-effort)
             sudo pkill -f "uvicorn.*:8080" || true
 
