@@ -106,7 +106,7 @@ jobs:
             # Compose envs
             export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_NAMESPACE }}"
             export OLLAMA_UI_IMG_TAG="${{ env.IMAGE_TAG }}"
-            export YOLO_IMG_TAG="${{ env.YOLO_TAG }}"
+            export YOLO_IMG_TAG="${{ env.IMAGE_TAG }}"
             export POSTGRES_DB="predictions"
             export POSTGRES_USER="postgres"
             export POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
@@ -119,6 +119,16 @@ jobs:
 
             PROJECT="ollamauistack"
             SUDO_ENV="--preserve-env=DOCKERHUB_USERNAME,OLLAMA_UI_IMG_TAG,YOLO_IMG_TAG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,YOLO_PORT,OLLAMA_UI_PORT,OLLAMA_URL,AWS_REGION,AWS_S3_BUCKET"
+
+            # NEW: stop/disable/mask legacy bare-metal yolo.service so it can't grab :8080
+            if systemctl list-unit-files | grep -q '^yolo.service'; then
+              sudo systemctl stop yolo.service || true
+              sudo systemctl disable yolo.service || true
+              sudo systemctl mask yolo.service || true
+              sudo systemctl daemon-reload || true
+            fi
+            # Also kill any stray uvicorn bound to 8080 (best-effort)
+            sudo pkill -f "uvicorn.*:8080" || true
 
             echo "== Pre-clean old compose projects =="
             sudo docker compose -p ubuntu down || true
