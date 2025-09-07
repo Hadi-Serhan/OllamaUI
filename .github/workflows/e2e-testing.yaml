@@ -125,11 +125,13 @@ jobs:
               if systemctl is-active --quiet yolo.service; then
                 sudo systemctl stop yolo.service || true
               fi
-              state="$(systemctl is-enabled yolo.service 2>/dev/null || true)"
-              if [ "$state" != "masked" ]; then
-                sudo systemctl disable yolo.service || true
-                sudo systemctl mask yolo.service || true
+              # If a real unit file exists, move it aside so masking can create the /dev/null symlink
+              if [ -e /etc/systemd/system/yolo.service ] && [ ! -L /etc/systemd/system/yolo.service ]; then
+                echo "Backing up /etc/systemd/system/yolo.service -> /etc/systemd/system/yolo.service.bak"
+                sudo mv /etc/systemd/system/yolo.service /etc/systemd/system/yolo.service.bak || true
               fi
+              sudo systemctl disable yolo.service || true
+              sudo systemctl mask yolo.service || true
               sudo systemctl daemon-reload || true
             fi
             # Also kill any stray uvicorn bound to 8080 (best-effort)
