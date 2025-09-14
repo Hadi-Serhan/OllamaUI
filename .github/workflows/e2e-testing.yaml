@@ -25,7 +25,6 @@ jobs:
       - name: Checkout OllamaUI (requested ref or event ref)
         uses: actions/checkout@v4
         with:
-          # If manually triggered, use the provided ref; otherwise use the event ref
           ref: ${{ github.event.inputs.ref || github.ref }}
 
       - name: Show HEAD and SDK versions (pre-build)
@@ -88,8 +87,11 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
+          timeout: 30m
+          command_timeout: 20m
+          debug: true
           script: |
-            set -euo pipefail
+            set -euxo pipefail
 
             if ! docker compose version >/dev/null 2>&1; then
               sudo apt-get update -y
@@ -248,7 +250,6 @@ jobs:
             done
           done
 
-          # Merge all results to a single folder for publishing
           rm -rf allure-results-merged
           mkdir -p allure-results-merged
           find allure-results -type f -name '*.json' -exec cp {} allure-results-merged/ \;
