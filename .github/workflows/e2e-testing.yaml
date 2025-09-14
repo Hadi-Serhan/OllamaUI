@@ -87,8 +87,8 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
-          timeout: 30m
-          command_timeout: 20m
+          timeout: 1800s           # was 30m
+          command_timeout: 1200s   # was 20m
           debug: true
           script: |
             set -euxo pipefail
@@ -135,8 +135,6 @@ jobs:
               sudo systemctl daemon-reload
             fi
             set -e
-            # Also kill any stray uvicorn bound to 8080 (best-effort)
-            sudo pkill -f "uvicorn.*:8080" || true
 
             echo "== Pre-clean old compose projects =="
             sudo docker compose -p ubuntu down || true
