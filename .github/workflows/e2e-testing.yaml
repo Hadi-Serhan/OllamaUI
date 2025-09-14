@@ -87,8 +87,8 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
-          timeout: 1800s           # was 30m
-          command_timeout: 1200s   # was 20m
+          timeout: 1800s
+          command_timeout: 1200s
           debug: true
           script: |
             set -euxo pipefail
@@ -108,14 +108,13 @@ jobs:
             # Compose envs
             export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_NAMESPACE }}"
             export OLLAMA_UI_IMG_TAG="${{ env.IMAGE_TAG }}"
-            export YOLO_IMG_TAG="${{ env.IMAGE_TAG }}"
+            export YOLO_IMG_TAG="${{ env.YOLO_TAG }}"   # <-- FIXED: use YOLO_TAG, not IMAGE_TAG
             export POSTGRES_DB="predictions"
             export POSTGRES_USER="postgres"
             export POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
             export YOLO_PORT="8080"
             export OLLAMA_UI_PORT="3000"
             export OLLAMA_URL="${{ secrets.OLLAMA_URL }}"
-            # S3 envs for the YOLO container
             export AWS_REGION="${{ secrets.AWS_REGION }}"
             export AWS_S3_BUCKET="${{ secrets.S3_BUCKET_NAME }}"
 
