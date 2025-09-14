@@ -61,7 +61,7 @@ jobs:
           if [ -n "${{ secrets.YOLO_IMAGE_TAG }}" ]; then
             echo "YOLO_TAG=${{ secrets.YOLO_IMAGE_TAG }}" >> $GITHUB_ENV
           else
-            echo "YOLO_TAG=latest" >> $GITHUB_ENV
+            echo "YOLO_TAG=45350350b9dc0211a4edd26738ca664f16066a1b-20250904-095610" >> $GITHUB_ENV
           fi
 
       - name: Build & push OllamaUI image
@@ -108,7 +108,7 @@ jobs:
             # Compose envs
             export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_NAMESPACE }}"
             export OLLAMA_UI_IMG_TAG="${{ env.IMAGE_TAG }}"
-            export YOLO_IMG_TAG="${{ env.YOLO_TAG }}"   # <-- FIXED: use YOLO_TAG, not IMAGE_TAG
+            export YOLO_IMG_TAG="${{ env.YOLO_TAG }}"
             export POSTGRES_DB="predictions"
             export POSTGRES_USER="postgres"
             export POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
@@ -118,8 +118,12 @@ jobs:
             export AWS_REGION="${{ secrets.AWS_REGION }}"
             export AWS_S3_BUCKET="${{ secrets.S3_BUCKET_NAME }}"
 
+            # Force API to use SQLite (avoids Postgres password issue)
+            export DB_BACKEND="sqlite"
+            export DATABASE_URL="sqlite:///./predictions.db"
+
             PROJECT="ollamauistack"
-            SUDO_ENV="--preserve-env=DOCKERHUB_USERNAME,OLLAMA_UI_IMG_TAG,YOLO_IMG_TAG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,YOLO_PORT,OLLAMA_UI_PORT,OLLAMA_URL,AWS_REGION,AWS_S3_BUCKET"
+            SUDO_ENV="--preserve-env=DOCKERHUB_USERNAME,OLLAMA_UI_IMG_TAG,YOLO_IMG_TAG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,YOLO_PORT,OLLAMA_UI_PORT,OLLAMA_URL,AWS_REGION,AWS_S3_BUCKET,DB_BACKEND,DATABASE_URL"
 
             # Ensure legacy bare-metal yolo.service can't bind host :8080 (non-destructive, reversible)
             set +e
